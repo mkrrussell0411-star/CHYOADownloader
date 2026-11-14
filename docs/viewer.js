@@ -3,7 +3,9 @@
 
   const PAD = 16;
   const MIN_ZOOM_FRACTION = 0.15;
-  const MAX_ZOOM_MULTIPLIER = 24;
+  /** Max zoom vs fit-to-view (100% = fully zoomed out). */
+  const MAX_ZOOM_PERCENT = 10000;
+  const MAX_ZOOM_MULTIPLIER = MAX_ZOOM_PERCENT / 100;
 
   const els = {
     viewportWrap: document.getElementById("viewport-wrap"),
