@@ -9,6 +9,7 @@
   --accent: #7f72ff;
   --accent-2: #4fc2ff;
   --radius: 14px;
+  --touch: 48px;
 }
 
 *,
@@ -17,11 +18,16 @@
   box-sizing: border-box;
 }
 
+html {
+  height: 100%;
+  -webkit-text-size-adjust: 100%;
+}
+
 html,
 body {
   margin: 0;
-  height: 100%;
   overflow: hidden;
+  overscroll-behavior: none;
   font-family: "DM Sans", system-ui, -apple-system, sans-serif;
   color: var(--text);
   background:
@@ -33,59 +39,81 @@ body {
 body {
   display: flex;
   flex-direction: column;
-  padding: env(safe-area-inset-top) env(safe-area-inset-right)
-    env(safe-area-inset-bottom) env(safe-area-inset-left);
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left);
 }
 
-.toolbar {
+body.is-viewing .toolbar-hint {
+  display: none;
+}
+
+.toolbar-top {
   flex: 0 0 auto;
-  display: grid;
-  grid-template-columns: 1fr auto;
-  align-items: center;
-  gap: 0.65rem 0.75rem;
-  padding: 0.75rem max(0.85rem, env(safe-area-inset-left))
-    0.75rem max(0.85rem, env(safe-area-inset-right));
+  z-index: 10;
+  padding: 0.55rem 0.85rem 0.4rem;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent), var(--panel);
   border-bottom: 1px solid var(--border);
-  z-index: 10;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
 }
 
-.toolbar h1 {
+.toolbar-top h1 {
   margin: 0;
   font-family: "Space Grotesk", "DM Sans", sans-serif;
-  font-size: clamp(0.95rem, 3.5vw, 1.1rem);
+  font-size: clamp(0.95rem, 4vw, 1.1rem);
   font-weight: 600;
-  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  grid-column: 1 / -1;
 }
 
-@media (min-width: 560px) {
-  .toolbar {
-    grid-template-columns: 1fr auto;
-  }
-
-  .toolbar h1 {
-    grid-column: 1;
-  }
+.toolbar-hint {
+  margin: 0.2rem 0 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+  line-height: 1.35;
 }
 
-.toolbar-actions {
-  display: flex;
+.toolbar-actions-desktop {
+  display: none;
   flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
   gap: 0.4rem;
-  grid-column: 1 / -1;
+  margin-top: 0.5rem;
 }
 
-@media (min-width: 560px) {
-  .toolbar-actions {
+@media (min-width: 768px) {
+  .toolbar-top {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    gap: 0.5rem 1rem;
+    padding: 0.75rem 1rem;
+  }
+
+  .toolbar-hint {
+    grid-column: 1 / -1;
+    margin: 0;
+  }
+
+  body.is-viewing .toolbar-hint {
+    display: none;
+  }
+
+  .toolbar-actions-desktop {
+    display: flex;
+    margin-top: 0;
     grid-column: 2;
     grid-row: 1;
+  }
+
+  .toolbar-top h1 {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .bottom-bar {
+    display: none !important;
   }
 }
 
@@ -95,14 +123,16 @@ body {
   background: var(--panel-2);
   color: var(--text);
   font: inherit;
-  font-size: 0.85rem;
+  font-size: 0.95rem;
   font-weight: 500;
-  padding: 0.5rem 0.85rem;
-  border-radius: 10px;
+  padding: 0.55rem 0.9rem;
+  border-radius: 12px;
   cursor: pointer;
   touch-action: manipulation;
-  min-height: 2.75rem;
+  min-height: var(--touch);
   transition: background 0.15s ease, border-color 0.15s ease;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .btn:active {
@@ -112,10 +142,6 @@ body {
 .btn-primary {
   background: rgba(127, 114, 255, 0.22);
   border-color: rgba(127, 114, 255, 0.45);
-}
-
-.btn-primary:active {
-  background: rgba(127, 114, 255, 0.32);
 }
 
 .file-label {
@@ -131,15 +157,48 @@ body {
   height: 0.1px;
   opacity: 0;
   overflow: hidden;
+  pointer-events: none;
+}
+
+.bottom-bar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: stretch;
+  gap: 0.4rem;
+  padding: 0.45rem 0.55rem max(0.55rem, env(safe-area-inset-bottom));
+  background: var(--panel);
+  border-top: 1px solid var(--border);
+  box-shadow: 0 -8px 28px rgba(0, 0, 0, 0.35);
+}
+
+.bottom-bar .file-label-mobile {
+  flex: 1.35;
+  font-weight: 600;
+}
+
+.bottom-bar .btn {
+  flex: 1;
+  padding-left: 0.35rem;
+  padding-right: 0.35rem;
+}
+
+.bottom-bar .btn-icon {
+  flex: 0.85;
+  font-size: 1.25rem;
+  line-height: 1;
+  padding: 0.35rem;
 }
 
 .zoom-readout {
-  font-size: 0.78rem;
+  flex: 0.9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.82rem;
   font-weight: 600;
   color: var(--muted);
-  min-width: 3.25rem;
-  text-align: center;
   font-variant-numeric: tabular-nums;
+  min-height: var(--touch);
 }
 
 .viewport-wrap {
@@ -151,16 +210,15 @@ body {
   cursor: grab;
   user-select: none;
   -webkit-user-select: none;
-  margin: 0.5rem;
+  margin: 0.4rem 0.5rem 0.35rem;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: #06070b;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03);
 }
 
-@media (min-width: 640px) {
+@media (min-width: 768px) {
   .viewport-wrap {
-    margin: 0.75rem 1rem 1rem;
+    margin: 0.6rem 1rem 1rem;
   }
 }
 
@@ -185,25 +243,25 @@ body {
   height: 100%;
   max-width: none;
   max-height: none;
+  touch-action: none;
+  pointer-events: none;
 }
 
 .empty-state {
   position: absolute;
   inset: 0;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0.85rem;
-  padding: 1.5rem;
+  padding: 1rem;
   text-align: center;
   color: var(--muted);
   pointer-events: none;
 }
 
 .empty-state-card {
-  max-width: 22rem;
-  padding: 1.25rem 1.35rem;
+  width: min(100%, 20rem);
+  padding: 1.15rem 1.2rem;
   border-radius: calc(var(--radius) + 2px);
   border: 1px solid var(--border);
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent), var(--panel);
@@ -213,14 +271,18 @@ body {
   display: block;
   color: var(--text);
   font-family: "Space Grotesk", sans-serif;
-  font-size: 1.05rem;
-  margin-bottom: 0.5rem;
+  font-size: 1.02rem;
+  margin-bottom: 0.45rem;
 }
 
 .empty-state p {
-  margin: 0;
-  font-size: 0.9rem;
-  line-height: 1.5;
+  margin: 0 0 0.5rem;
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+.empty-state p:last-child {
+  margin-bottom: 0;
 }
 
 .empty-state code {
@@ -229,8 +291,8 @@ body {
 }
 
 .drop-hint {
-  font-size: 0.82rem;
-  opacity: 0.9;
+  font-size: 0.8rem;
+  opacity: 0.92;
 }
 
 .viewport-wrap.has-svg .empty-state {

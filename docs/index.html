@@ -4,9 +4,12 @@
     <meta charset="UTF-8" />
     <meta
       name="viewport"
-      content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
     />
     <meta name="theme-color" content="#0a0c12" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta
       name="description"
       content="Pan and zoom large storyboard SVG exports from CHYOADownloader."
@@ -18,24 +21,25 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600&family=Space+Grotesk:wght@500;600&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="viewer.css" />
+    <link rel="stylesheet" href="viewer.css?v=5" />
   </head>
   <body>
-    <header class="toolbar">
+    <header class="toolbar toolbar-top">
       <h1 id="doc-title">Storyboard SVG viewer</h1>
-      <div class="toolbar-actions">
-        <label class="btn btn-primary file-label" id="open-btn">
+      <p class="toolbar-hint" id="toolbar-hint">Tap Open SVG, then pinch or drag the map</p>
+      <div class="toolbar-actions toolbar-actions-desktop" aria-label="Map controls">
+        <label class="btn btn-primary file-label">
           Open SVG
           <input type="file" id="file-input" accept=".svg,image/svg+xml" />
         </label>
-        <button type="button" class="btn" id="fit-btn" title="Fit whole map on screen">
+        <button type="button" class="btn" id="fit-btn-d" title="Fit whole map on screen">
           Fit
         </button>
-        <button type="button" class="btn" id="zoom-out" title="Zoom out" aria-label="Zoom out">
+        <button type="button" class="btn" id="zoom-out-d" title="Zoom out" aria-label="Zoom out">
           −
         </button>
-        <span class="zoom-readout" id="zoom-readout">—</span>
-        <button type="button" class="btn" id="zoom-in" title="Zoom in" aria-label="Zoom in">
+        <span class="zoom-readout" id="zoom-readout-d" aria-live="polite">—</span>
+        <button type="button" class="btn" id="zoom-in-d" title="Zoom in" aria-label="Zoom in">
           +
         </button>
       </div>
@@ -47,18 +51,25 @@
         <div class="empty-state" id="empty-state">
           <div class="empty-state-card">
             <strong>Open a storyboard SVG</strong>
-            <p>
-              Export a map from the storyboard app, then open the
-              <code>.svg</code> here—starts fully zoomed out.
-            </p>
-            <p class="drop-hint">Drop a file or tap <em>Open SVG</em>.</p>
-            <p class="drop-hint">Wheel or pinch to zoom · drag to pan</p>
+            <p>Export from the storyboard app, then open the <code>.svg</code> here.</p>
+            <p class="drop-hint">Use <em>Open SVG</em> below on phone; drag &amp; drop on desktop.</p>
           </div>
         </div>
       </div>
       <div class="loading-overlay" id="loading" aria-live="polite">Loading…</div>
     </div>
 
-    <script src="viewer.js?v=4"></script>
+    <nav class="bottom-bar" aria-label="Map controls">
+      <label class="btn btn-primary file-label file-label-mobile">
+        Open
+        <input type="file" id="file-input-mobile" accept=".svg,image/svg+xml" />
+      </label>
+      <button type="button" class="btn" id="fit-btn" aria-label="Fit map to screen">Fit</button>
+      <button type="button" class="btn btn-icon" id="zoom-out" aria-label="Zoom out">−</button>
+      <span class="zoom-readout" id="zoom-readout" aria-live="polite">—</span>
+      <button type="button" class="btn btn-icon" id="zoom-in" aria-label="Zoom in">+</button>
+    </nav>
+
+    <script src="viewer.js?v=5"></script>
   </body>
 </html>

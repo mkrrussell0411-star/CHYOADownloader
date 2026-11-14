@@ -1,8 +1,7 @@
 (function () {
   "use strict";
 
-  const VIEWER_VERSION = "4";
-  const PAD = 16;
+  const VIEWER_VERSION = "5";
   const MIN_ZOOM_FRACTION = 0.15;
   const MAX_ZOOM_PERCENT = 10000;
   const MAX_ZOOM_MULTIPLIER = MAX_ZOOM_PERCENT / 100;
@@ -12,10 +11,15 @@
     viewport: document.getElementById("viewport"),
     inner: document.getElementById("viewport-inner"),
     fileInput: document.getElementById("file-input"),
+    fileInputMobile: document.getElementById("file-input-mobile"),
     fitBtn: document.getElementById("fit-btn"),
+    fitBtnD: document.getElementById("fit-btn-d"),
     zoomInBtn: document.getElementById("zoom-in"),
     zoomOutBtn: document.getElementById("zoom-out"),
+    zoomInBtnD: document.getElementById("zoom-in-d"),
+    zoomOutBtnD: document.getElementById("zoom-out-d"),
     zoomReadout: document.getElementById("zoom-readout"),
+    zoomReadoutD: document.getElementById("zoom-readout-d"),
     title: document.getElementById("doc-title"),
     loading: document.getElementById("loading"),
   };
@@ -34,9 +38,16 @@
   let pointers = new Map();
   let dragStart = null;
   let pinchStart = null;
+  let touchBlocker = null;
 
   function setLoading(on) {
     els.loading.classList.toggle("visible", on);
+  }
+
+  function setZoomLabel(pct) {
+    const text = `${pct}%`;
+    if (els.zoomReadout) els.zoomReadout.textContent = text;
+    if (els.zoomReadoutD) els.zoomReadoutD.textContent = text;
   }
 
   function parseSvgSize(svgEl) {
@@ -76,16 +87,19 @@
     return pt.matrixTransform(ctm.inverse());
   }
 
+  function screenDeltaToWorld(dx, dy) {
+    const vw = els.viewport.clientWidth || 1;
+    const vh = els.viewport.clientHeight || 1;
+    return { dx: (dx / vw) * viewW, dy: (dy / vh) * viewH };
+  }
+
   function applyViewBox() {
     if (!svgRoot) {
       return;
     }
-    svgRoot.setAttribute(
-      "viewBox",
-      `${viewX} ${viewY} ${viewW} ${viewH}`
-    );
+    svgRoot.setAttribute("viewBox", `${viewX} ${viewY} ${viewW} ${viewH}`);
     const pct = fitViewW > 0 ? Math.round((fitViewW / viewW) * 100) : 100;
-    els.zoomReadout.textContent = `${pct}%`;
+    setZoomLabel(pct);
   }
 
   function clampViewW(nextW) {
@@ -108,6 +122,14 @@
     viewW = worldW;
     viewH = worldH;
     fitViewW = worldW;
+    applyViewBox();
+  }
+
+  function onViewportResize() {
+    if (!svgRoot) {
+      return;
+    }
+    viewH = viewW / viewportAspect();
     applyViewBox();
   }
 
@@ -134,11 +156,37 @@
       els.inner.removeChild(els.inner.firstChild);
     }
     els.viewportWrap.classList.remove("has-svg");
+    document.body.classList.remove("is-viewing");
     svgRoot = null;
     worldW = worldH = 0;
     viewX = viewY = 0;
     viewW = viewH = fitViewW = 1;
-    els.zoomReadout.textContent = "—";
+    setZoomLabel("—");
+    disableTouchBlock();
+  }
+
+  function enableTouchBlock() {
+    if (touchBlocker) {
+      return;
+    }
+    touchBlocker = (e) => {
+      if (els.viewportWrap.classList.contains("has-svg")) {
+        e.preventDefault();
+      }
+    };
+    document.addEventListener("touchmove", touchBlocker, { passive: false });
+    document.addEventListener("gesturestart", touchBlocker, { passive: false });
+    document.addEventListener("gesturechange", touchBlocker, { passive: false });
+  }
+
+  function disableTouchBlock() {
+    if (!touchBlocker) {
+      return;
+    }
+    document.removeEventListener("touchmove", touchBlocker);
+    document.removeEventListener("gesturestart", touchBlocker);
+    document.removeEventListener("gesturechange", touchBlocker);
+    touchBlocker = null;
   }
 
   async function loadSvgFromFile(file) {
@@ -166,6 +214,8 @@
       els.inner.appendChild(imported);
       svgRoot = imported;
       els.viewportWrap.classList.add("has-svg");
+      document.body.classList.add("is-viewing");
+      enableTouchBlock();
       els.title.textContent = file.name.replace(/\.svg$/i, "");
       const size = parseSvgSize(imported);
       worldX = size.x;
@@ -186,23 +236,35 @@
     if (!els.viewportWrap.classList.contains("has-svg")) {
       return;
     }
+    if (ev.pointerType === "mouse" && ev.button !== 0) {
+      return;
+    }
+    ev.preventDefault();
     els.viewportWrap.setPointerCapture(ev.pointerId);
     pointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
     if (pointers.size === 1) {
-      const pt = clientToSvg(ev.clientX, ev.clientY);
       dragStart = {
         x: ev.clientX,
         y: ev.clientY,
         viewX,
         viewY,
-        svgX: pt?.x ?? 0,
-        svgY: pt?.y ?? 0,
       };
       els.viewportWrap.classList.add("is-dragging");
     } else if (pointers.size === 2) {
       const [a, b] = [...pointers.values()];
       const dist = Math.hypot(a.x - b.x, a.y - b.y);
-      pinchStart = { dist, viewW, viewX, viewY, viewH };
+      const midX = (a.x + b.x) / 2;
+      const midY = (a.y + b.y) / 2;
+      const pt = clientToSvg(midX, midY);
+      pinchStart = {
+        dist,
+        viewW,
+        viewX,
+        viewY,
+        viewH,
+        focusX: pt?.x,
+        focusY: pt?.y,
+      };
       dragStart = null;
     }
   }
@@ -211,38 +273,42 @@
     if (!pointers.has(ev.pointerId)) {
       return;
     }
+    ev.preventDefault();
     pointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
 
     if (pointers.size >= 2 && pinchStart) {
       const [a, b] = [...pointers.values()];
       const dist = Math.hypot(a.x - b.x, a.y - b.y);
-      if (pinchStart.dist < 1) {
+      if (pinchStart.dist < 2) {
+        pinchStart.dist = dist;
         return;
       }
+      const scaleFactor = dist / pinchStart.dist;
       const midX = (a.x + b.x) / 2;
       const midY = (a.y + b.y) / 2;
-      const pt = clientToSvg(midX, midY);
-      if (!pt) {
-        return;
+      let pt = clientToSvg(midX, midY);
+      if (!pt && pinchStart.focusX != null) {
+        pt = { x: pinchStart.focusX, y: pinchStart.focusY };
       }
-      const ratio = dist / pinchStart.dist;
-      const baseW = pinchStart.viewW;
-      const fx = baseW > 0 ? (pt.x - pinchStart.viewX) / baseW : 0.5;
-      const fy = pinchStart.viewH > 0 ? (pt.y - pinchStart.viewY) / pinchStart.viewH : 0.5;
-      setViewSize(baseW / ratio);
+      if (!pt) {
+        pt = { x: viewX + viewW / 2, y: viewY + viewH / 2 };
+      }
+      const fx = viewW > 0 ? (pt.x - viewX) / viewW : 0.5;
+      const fy = viewH > 0 ? (pt.y - viewY) / viewH : 0.5;
+      setViewSize(viewW / scaleFactor);
       viewX = pt.x - fx * viewW;
       viewY = pt.y - fy * viewH;
+      pinchStart.dist = dist;
       applyViewBox();
       return;
     }
 
     if (dragStart && pointers.size === 1) {
-      const pt = clientToSvg(ev.clientX, ev.clientY);
-      if (!pt) {
-        return;
-      }
-      viewX = dragStart.viewX + (dragStart.svgX - pt.x);
-      viewY = dragStart.viewY + (dragStart.svgY - pt.y);
+      const dx = ev.clientX - dragStart.x;
+      const dy = ev.clientY - dragStart.y;
+      const d = screenDeltaToWorld(dx, dy);
+      viewX = dragStart.viewX - d.dx;
+      viewY = dragStart.viewY - d.dy;
       applyViewBox();
     }
   }
@@ -257,15 +323,7 @@
       els.viewportWrap.classList.remove("is-dragging");
     } else if (pointers.size === 1) {
       const only = [...pointers.entries()][0][1];
-      const pt = clientToSvg(only.x, only.y);
-      dragStart = {
-        x: only.x,
-        y: only.y,
-        viewX,
-        viewY,
-        svgX: pt?.x ?? 0,
-        svgY: pt?.y ?? 0,
-      };
+      dragStart = { x: only.x, y: only.y, viewX, viewY };
     }
     try {
       els.viewportWrap.releasePointerCapture(ev.pointerId);
@@ -299,45 +357,59 @@
     });
   }
 
-  els.fileInput.addEventListener("change", () => {
-    const file = els.fileInput.files?.[0];
-    if (file) {
-      loadSvgFromFile(file);
-    }
-    els.fileInput.value = "";
-  });
+  function hookFileInput(input) {
+    if (!input) return;
+    input.addEventListener("change", () => {
+      const file = input.files?.[0];
+      if (file) {
+        loadSvgFromFile(file);
+      }
+      input.value = "";
+    });
+  }
 
-  els.fitBtn.addEventListener("click", fitToView);
+  function hookButtons(fit, zoomIn, zoomOut) {
+    fit?.addEventListener("click", (e) => {
+      e.preventDefault();
+      fitToView();
+    });
+    zoomIn?.addEventListener("click", (e) => {
+      e.preventDefault();
+      const r = els.viewport.getBoundingClientRect();
+      zoomAt(1.25, r.left + r.width / 2, r.top + r.height / 2);
+    });
+    zoomOut?.addEventListener("click", (e) => {
+      e.preventDefault();
+      const r = els.viewport.getBoundingClientRect();
+      zoomAt(1 / 1.25, r.left + r.width / 2, r.top + r.height / 2);
+    });
+  }
+
+  hookFileInput(els.fileInput);
+  hookFileInput(els.fileInputMobile);
+  hookButtons(els.fitBtn, els.zoomInBtn, els.zoomOutBtn);
+  hookButtons(els.fitBtnD, els.zoomInBtnD, els.zoomOutBtnD);
+
   els.viewportWrap.addEventListener("dblclick", (ev) => {
     if (els.viewportWrap.classList.contains("has-svg")) {
       ev.preventDefault();
       fitToView();
     }
   });
-  els.zoomInBtn.addEventListener("click", () => {
-    const r = els.viewport.getBoundingClientRect();
-    zoomAt(1.25, r.left + r.width / 2, r.top + r.height / 2);
-  });
-  els.zoomOutBtn.addEventListener("click", () => {
-    const r = els.viewport.getBoundingClientRect();
-    zoomAt(1 / 1.25, r.left + r.width / 2, r.top + r.height / 2);
-  });
 
-  els.viewportWrap.addEventListener("pointerdown", onPointerDown);
-  els.viewportWrap.addEventListener("pointermove", onPointerMove);
+  els.viewportWrap.addEventListener("pointerdown", onPointerDown, { passive: false });
+  els.viewportWrap.addEventListener("pointermove", onPointerMove, { passive: false });
   els.viewportWrap.addEventListener("pointerup", onPointerUp);
   els.viewportWrap.addEventListener("pointercancel", onPointerUp);
   els.viewportWrap.addEventListener("wheel", onWheel, { passive: false });
 
-  window.addEventListener("resize", () => {
-    if (els.viewportWrap.classList.contains("has-svg")) {
-      fitToView();
-    }
-  });
+  window.addEventListener("resize", onViewportResize);
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener("resize", onViewportResize);
+  }
 
   setupDrop();
+  setZoomLabel("—");
 
-  if (typeof window !== "undefined") {
-    window.CHYOA_VIEWER_VERSION = VIEWER_VERSION;
-  }
+  window.CHYOA_VIEWER_VERSION = VIEWER_VERSION;
 })();
