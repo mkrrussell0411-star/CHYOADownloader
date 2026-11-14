@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#0a0c12" />
+    <meta
+      name="description"
+      content="Pan and zoom large storyboard SVG exports from CHYOADownloader."
+    />
+    <title>Storyboard SVG viewer</title>
+    <link rel="stylesheet" href="viewer.css" />
+  </head>
+  <body>
+    <header class="toolbar">
+      <h1 id="doc-title">Storyboard SVG viewer</h1>
+      <div class="toolbar-actions">
+        <label class="btn btn-primary file-label" id="open-btn">
+          Open SVG
+          <input type="file" id="file-input" accept=".svg,image/svg+xml" />
+        </label>
+        <button type="button" class="btn" id="fit-btn" title="Fit whole map on screen">
+          Fit
+        </button>
+        <button type="button" class="btn" id="zoom-out" title="Zoom out" aria-label="Zoom out">
+          −
+        </button>
+        <span class="zoom-readout" id="zoom-readout">—</span>
+        <button type="button" class="btn" id="zoom-in" title="Zoom in" aria-label="Zoom in">
+          +
+        </button>
+      </div>
+    </header>
+
+    <div class="viewport-wrap" id="viewport-wrap">
+      <div class="viewport" id="viewport">
+        <div class="viewport-inner" id="viewport-inner"></div>
+        <div class="empty-state" id="empty-state">
+          <strong>Open a storyboard SVG</strong>
+          <p>
+            Export a map from CHYOADownloader’s storyboard app, then open the
+            <code>.svg</code> here. The full map starts zoomed out so you can see everything at
+            once.
+          </p>
+          <p class="drop-hint">Drag and drop a file, or tap <em>Open SVG</em>.</p>
+          <p class="drop-hint btn-hide-mobile">
+            Desktop: scroll wheel to zoom · drag to pan · pinch on phone
+          </p>
+        </div>
+      </div>
+      <div class="loading-overlay" id="loading" aria-live="polite">Loading…</div>
+    </div>
+
+    <script src="viewer.js"></script>
+  </body>
+</html>
