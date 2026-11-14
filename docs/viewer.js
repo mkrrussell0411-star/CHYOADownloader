@@ -1,9 +1,9 @@
 (function () {
   "use strict";
 
+  const VIEWER_VERSION = "4";
   const PAD = 16;
   const MIN_ZOOM_FRACTION = 0.15;
-  /** Max zoom vs fit-to-view (100% = fully zoomed out). */
   const MAX_ZOOM_PERCENT = 10000;
   const MAX_ZOOM_MULTIPLIER = MAX_ZOOM_PERCENT / 100;
 
@@ -20,12 +20,16 @@
     loading: document.getElementById("loading"),
   };
 
-  let contentW = 0;
-  let contentH = 0;
-  let fitScale = 1;
-  let scale = 1;
-  let panX = 0;
-  let panY = 0;
+  let svgRoot = null;
+  let worldX = 0;
+  let worldY = 0;
+  let worldW = 0;
+  let worldH = 0;
+  let viewX = 0;
+  let viewY = 0;
+  let viewW = 0;
+  let viewH = 0;
+  let fitViewW = 1;
 
   let pointers = new Map();
   let dragStart = null;
@@ -40,54 +44,89 @@
     if (vb) {
       const parts = vb.trim().split(/[\s,]+/).map(Number);
       if (parts.length === 4 && parts.every((n) => !Number.isNaN(n))) {
-        return { w: parts[2], h: parts[3] };
+        return { x: parts[0], y: parts[1], w: parts[2], h: parts[3] };
       }
     }
     const w = parseFloat(svgEl.getAttribute("width")) || 0;
     const h = parseFloat(svgEl.getAttribute("height")) || 0;
     if (w > 0 && h > 0) {
-      return { w, h };
+      return { x: 0, y: 0, w, h };
     }
     const box = svgEl.getBBox();
-    return { w: box.width || 800, h: box.height || 600 };
+    return { x: box.x || 0, y: box.y || 0, w: box.width || 800, h: box.height || 600 };
   }
 
-  function applyTransform() {
-    els.inner.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
-    const pct = fitScale > 0 ? Math.round((scale / fitScale) * 100) : 100;
+  function viewportAspect() {
+    const vw = els.viewport.clientWidth;
+    const vh = els.viewport.clientHeight;
+    return vw > 0 && vh > 0 ? vw / vh : worldW / worldH || 1;
+  }
+
+  function clientToSvg(clientX, clientY) {
+    if (!svgRoot) {
+      return null;
+    }
+    const pt = svgRoot.createSVGPoint();
+    pt.x = clientX;
+    pt.y = clientY;
+    const ctm = svgRoot.getScreenCTM();
+    if (!ctm) {
+      return null;
+    }
+    return pt.matrixTransform(ctm.inverse());
+  }
+
+  function applyViewBox() {
+    if (!svgRoot) {
+      return;
+    }
+    svgRoot.setAttribute(
+      "viewBox",
+      `${viewX} ${viewY} ${viewW} ${viewH}`
+    );
+    const pct = fitViewW > 0 ? Math.round((fitViewW / viewW) * 100) : 100;
     els.zoomReadout.textContent = `${pct}%`;
   }
 
-  function fitToView() {
-    const vw = els.viewport.clientWidth;
-    const vh = els.viewport.clientHeight;
-    if (!contentW || !contentH || !vw || !vh) {
-      return;
-    }
-    fitScale = Math.min((vw - PAD * 2) / contentW, (vh - PAD * 2) / contentH);
-    scale = fitScale;
-    panX = (vw - contentW * scale) / 2;
-    panY = (vh - contentH * scale) / 2;
-    applyTransform();
+  function clampViewW(nextW) {
+    const minW = fitViewW / MAX_ZOOM_MULTIPLIER;
+    const maxW = fitViewW / MIN_ZOOM_FRACTION;
+    return Math.min(maxW, Math.max(minW, nextW));
   }
 
-  function clampScale(next) {
-    const minS = fitScale * MIN_ZOOM_FRACTION;
-    const maxS = fitScale * MAX_ZOOM_MULTIPLIER;
-    return Math.min(maxS, Math.max(minS, next));
+  function setViewSize(newW) {
+    viewW = clampViewW(newW);
+    viewH = viewW / viewportAspect();
+  }
+
+  function fitToView() {
+    if (!svgRoot || !worldW || !worldH) {
+      return;
+    }
+    viewX = worldX;
+    viewY = worldY;
+    viewW = worldW;
+    viewH = worldH;
+    fitViewW = worldW;
+    applyViewBox();
   }
 
   function zoomAt(factor, clientX, clientY) {
-    const rect = els.viewport.getBoundingClientRect();
-    const vx = clientX - rect.left;
-    const vy = clientY - rect.top;
-    const worldX = (vx - panX) / scale;
-    const worldY = (vy - panY) / scale;
-    const next = clampScale(scale * factor);
-    panX = vx - worldX * next;
-    panY = vy - worldY * next;
-    scale = next;
-    applyTransform();
+    if (!svgRoot) {
+      return;
+    }
+    const pt = clientToSvg(clientX, clientY);
+    if (!pt) {
+      return;
+    }
+    const oldW = viewW;
+    const oldH = viewH;
+    const fx = oldW > 0 ? (pt.x - viewX) / oldW : 0.5;
+    const fy = oldH > 0 ? (pt.y - viewY) / oldH : 0.5;
+    setViewSize(oldW / factor);
+    viewX = pt.x - fx * viewW;
+    viewY = pt.y - fy * viewH;
+    applyViewBox();
   }
 
   function clearSvg() {
@@ -95,14 +134,15 @@
       els.inner.removeChild(els.inner.firstChild);
     }
     els.viewportWrap.classList.remove("has-svg");
-    contentW = contentH = 0;
-    fitScale = scale = 1;
-    panX = panY = 0;
-    applyTransform();
+    svgRoot = null;
+    worldW = worldH = 0;
+    viewX = viewY = 0;
+    viewW = viewH = fitViewW = 1;
+    els.zoomReadout.textContent = "—";
   }
 
   async function loadSvgFromFile(file) {
-    if (!file || !/\.svg$/i.test(file.name) && file.type !== "image/svg+xml") {
+    if (!file || (!/\.svg$/i.test(file.name) && file.type !== "image/svg+xml")) {
       alert("Please choose an .svg file.");
       return;
     }
@@ -120,12 +160,18 @@
       }
       clearSvg();
       const imported = document.importNode(svg, true);
+      imported.setAttribute("width", "100%");
+      imported.setAttribute("height", "100%");
+      imported.setAttribute("preserveAspectRatio", "xMidYMid meet");
       els.inner.appendChild(imported);
+      svgRoot = imported;
       els.viewportWrap.classList.add("has-svg");
       els.title.textContent = file.name.replace(/\.svg$/i, "");
       const size = parseSvgSize(imported);
-      contentW = size.w;
-      contentH = size.h;
+      worldX = size.x;
+      worldY = size.y;
+      worldW = size.w;
+      worldH = size.h;
       requestAnimationFrame(() => {
         fitToView();
         setLoading(false);
@@ -143,12 +189,20 @@
     els.viewportWrap.setPointerCapture(ev.pointerId);
     pointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
     if (pointers.size === 1) {
-      dragStart = { x: ev.clientX, y: ev.clientY, panX, panY };
+      const pt = clientToSvg(ev.clientX, ev.clientY);
+      dragStart = {
+        x: ev.clientX,
+        y: ev.clientY,
+        viewX,
+        viewY,
+        svgX: pt?.x ?? 0,
+        svgY: pt?.y ?? 0,
+      };
       els.viewportWrap.classList.add("is-dragging");
     } else if (pointers.size === 2) {
       const [a, b] = [...pointers.values()];
       const dist = Math.hypot(a.x - b.x, a.y - b.y);
-      pinchStart = { dist, scale, panX, panY, midX: (a.x + b.x) / 2, midY: (a.y + b.y) / 2 };
+      pinchStart = { dist, viewW, viewX, viewY, viewH };
       dragStart = null;
     }
   }
@@ -167,23 +221,29 @@
       }
       const midX = (a.x + b.x) / 2;
       const midY = (a.y + b.y) / 2;
-      const rect = els.viewport.getBoundingClientRect();
-      const vx = midX - rect.left;
-      const vy = midY - rect.top;
-      const worldX = (vx - pinchStart.panX) / pinchStart.scale;
-      const worldY = (vy - pinchStart.panY) / pinchStart.scale;
-      const next = clampScale(pinchStart.scale * (dist / pinchStart.dist));
-      panX = vx - worldX * next;
-      panY = vy - worldY * next;
-      scale = next;
-      applyTransform();
+      const pt = clientToSvg(midX, midY);
+      if (!pt) {
+        return;
+      }
+      const ratio = dist / pinchStart.dist;
+      const baseW = pinchStart.viewW;
+      const fx = baseW > 0 ? (pt.x - pinchStart.viewX) / baseW : 0.5;
+      const fy = pinchStart.viewH > 0 ? (pt.y - pinchStart.viewY) / pinchStart.viewH : 0.5;
+      setViewSize(baseW / ratio);
+      viewX = pt.x - fx * viewW;
+      viewY = pt.y - fy * viewH;
+      applyViewBox();
       return;
     }
 
     if (dragStart && pointers.size === 1) {
-      panX = dragStart.panX + (ev.clientX - dragStart.x);
-      panY = dragStart.panY + (ev.clientY - dragStart.y);
-      applyTransform();
+      const pt = clientToSvg(ev.clientX, ev.clientY);
+      if (!pt) {
+        return;
+      }
+      viewX = dragStart.viewX + (dragStart.svgX - pt.x);
+      viewY = dragStart.viewY + (dragStart.svgY - pt.y);
+      applyViewBox();
     }
   }
 
@@ -196,12 +256,15 @@
       dragStart = null;
       els.viewportWrap.classList.remove("is-dragging");
     } else if (pointers.size === 1) {
-      const only = [...pointers.entries()][0];
+      const only = [...pointers.entries()][0][1];
+      const pt = clientToSvg(only.x, only.y);
       dragStart = {
-        x: only[1].x,
-        y: only[1].y,
-        panX,
-        panY,
+        x: only.x,
+        y: only.y,
+        viewX,
+        viewY,
+        svgX: pt?.x ?? 0,
+        svgY: pt?.y ?? 0,
       };
     }
     try {
@@ -273,5 +336,8 @@
   });
 
   setupDrop();
-  applyTransform();
+
+  if (typeof window !== "undefined") {
+    window.CHYOA_VIEWER_VERSION = VIEWER_VERSION;
+  }
 })();

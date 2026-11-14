@@ -12,6 +12,12 @@
       content="Pan and zoom large storyboard SVG exports from CHYOADownloader."
     />
     <title>Storyboard SVG viewer</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600&family=Space+Grotesk:wght@500;600&display=swap"
+      rel="stylesheet"
+    />
     <link rel="stylesheet" href="viewer.css" />
   </head>
   <body>
@@ -39,21 +45,20 @@
       <div class="viewport" id="viewport">
         <div class="viewport-inner" id="viewport-inner"></div>
         <div class="empty-state" id="empty-state">
-          <strong>Open a storyboard SVG</strong>
-          <p>
-            Export a map from CHYOADownloader’s storyboard app, then open the
-            <code>.svg</code> here. The full map starts zoomed out so you can see everything at
-            once.
-          </p>
-          <p class="drop-hint">Drag and drop a file, or tap <em>Open SVG</em>.</p>
-          <p class="drop-hint btn-hide-mobile">
-            Desktop: scroll wheel to zoom · drag to pan · pinch on phone
-          </p>
+          <div class="empty-state-card">
+            <strong>Open a storyboard SVG</strong>
+            <p>
+              Export a map from the storyboard app, then open the
+              <code>.svg</code> here—starts fully zoomed out.
+            </p>
+            <p class="drop-hint">Drop a file or tap <em>Open SVG</em>.</p>
+            <p class="drop-hint">Wheel or pinch to zoom · drag to pan</p>
+          </div>
         </div>
       </div>
       <div class="loading-overlay" id="loading" aria-live="polite">Loading…</div>
     </div>
 
-    <script src="viewer.js"></script>
+    <script src="viewer.js?v=4"></script>
   </body>
 </html>
