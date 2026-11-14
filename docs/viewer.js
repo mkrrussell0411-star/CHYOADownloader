@@ -1,7 +1,7 @@
 (function () {
   "use strict";
 
-  const VIEWER_VERSION = "5";
+  const VIEWER_VERSION = "6";
   const MIN_ZOOM_FRACTION = 0.15;
   const MAX_ZOOM_PERCENT = 10000;
   const MAX_ZOOM_MULTIPLIER = MAX_ZOOM_PERCENT / 100;
@@ -67,30 +67,74 @@
     return { x: box.x || 0, y: box.y || 0, w: box.width || 800, h: box.height || 600 };
   }
 
-  function viewportAspect() {
-    const vw = els.viewport.clientWidth;
-    const vh = els.viewport.clientHeight;
-    return vw > 0 && vh > 0 ? vw / vh : worldW / worldH || 1;
+  function worldAspect() {
+    return worldW > 0 ? worldH / worldW : 1;
   }
 
-  function clientToSvg(clientX, clientY) {
-    if (!svgRoot) {
-      return null;
+  /** Letterboxed render area for xMidYMid meet + current viewBox. */
+  function getRenderRect() {
+    const rect = els.viewport.getBoundingClientRect();
+    const vpW = rect.width || 1;
+    const vpH = rect.height || 1;
+    const viewAspect = viewW / viewH;
+    const vpAspect = vpW / vpH;
+    let rw;
+    let rh;
+    let ox;
+    let oy;
+    if (viewAspect > vpAspect) {
+      rw = vpW;
+      rh = vpW / viewAspect;
+      ox = 0;
+      oy = (vpH - rh) / 2;
+    } else {
+      rh = vpH;
+      rw = vpH * viewAspect;
+      ox = (vpW - rw) / 2;
+      oy = 0;
     }
-    const pt = svgRoot.createSVGPoint();
-    pt.x = clientX;
-    pt.y = clientY;
-    const ctm = svgRoot.getScreenCTM();
-    if (!ctm) {
-      return null;
+    return { left: rect.left, top: rect.top, rw, rh, ox, oy };
+  }
+
+  function clientToView(clientX, clientY) {
+    const r = getRenderRect();
+    if (r.rw < 1 || r.rh < 1) {
+      return { x: viewX + viewW / 2, y: viewY + viewH / 2 };
     }
-    return pt.matrixTransform(ctm.inverse());
+    const u = (clientX - r.left - r.ox) / r.rw;
+    const v = (clientY - r.top - r.oy) / r.rh;
+    return {
+      x: viewX + Math.min(1, Math.max(0, u)) * viewW,
+      y: viewY + Math.min(1, Math.max(0, v)) * viewH,
+    };
   }
 
   function screenDeltaToWorld(dx, dy) {
-    const vw = els.viewport.clientWidth || 1;
-    const vh = els.viewport.clientHeight || 1;
-    return { dx: (dx / vw) * viewW, dy: (dy / vh) * viewH };
+    const r = getRenderRect();
+    return {
+      dx: (dx / r.rw) * viewW,
+      dy: (dy / r.rh) * viewH,
+    };
+  }
+
+  function clampViewToWorld() {
+    if (!worldW || !worldH) {
+      return;
+    }
+    if (viewW >= worldW) {
+      viewX = worldX + (worldW - viewW) / 2;
+    } else {
+      const minX = worldX;
+      const maxX = worldX + worldW - viewW;
+      viewX = Math.min(maxX, Math.max(minX, viewX));
+    }
+    if (viewH >= worldH) {
+      viewY = worldY + (worldH - viewH) / 2;
+    } else {
+      const minY = worldY;
+      const maxY = worldY + worldH - viewH;
+      viewY = Math.min(maxY, Math.max(minY, viewY));
+    }
   }
 
   function applyViewBox() {
@@ -110,7 +154,7 @@
 
   function setViewSize(newW) {
     viewW = clampViewW(newW);
-    viewH = viewW / viewportAspect();
+    viewH = viewW * worldAspect();
   }
 
   function fitToView() {
@@ -129,7 +173,8 @@
     if (!svgRoot) {
       return;
     }
-    viewH = viewW / viewportAspect();
+    viewH = viewW * worldAspect();
+    clampViewToWorld();
     applyViewBox();
   }
 
@@ -137,10 +182,7 @@
     if (!svgRoot) {
       return;
     }
-    const pt = clientToSvg(clientX, clientY);
-    if (!pt) {
-      return;
-    }
+    const pt = clientToView(clientX, clientY);
     const oldW = viewW;
     const oldH = viewH;
     const fx = oldW > 0 ? (pt.x - viewX) / oldW : 0.5;
@@ -148,6 +190,7 @@
     setViewSize(oldW / factor);
     viewX = pt.x - fx * viewW;
     viewY = pt.y - fy * viewH;
+    clampViewToWorld();
     applyViewBox();
   }
 
@@ -255,15 +298,11 @@
       const dist = Math.hypot(a.x - b.x, a.y - b.y);
       const midX = (a.x + b.x) / 2;
       const midY = (a.y + b.y) / 2;
-      const pt = clientToSvg(midX, midY);
+      const pt = clientToView(midX, midY);
       pinchStart = {
         dist,
-        viewW,
-        viewX,
-        viewY,
-        viewH,
-        focusX: pt?.x,
-        focusY: pt?.y,
+        focusX: pt.x,
+        focusY: pt.y,
       };
       dragStart = null;
     }
@@ -286,18 +325,13 @@
       const scaleFactor = dist / pinchStart.dist;
       const midX = (a.x + b.x) / 2;
       const midY = (a.y + b.y) / 2;
-      let pt = clientToSvg(midX, midY);
-      if (!pt && pinchStart.focusX != null) {
-        pt = { x: pinchStart.focusX, y: pinchStart.focusY };
-      }
-      if (!pt) {
-        pt = { x: viewX + viewW / 2, y: viewY + viewH / 2 };
-      }
+      const pt = clientToView(midX, midY);
       const fx = viewW > 0 ? (pt.x - viewX) / viewW : 0.5;
       const fy = viewH > 0 ? (pt.y - viewY) / viewH : 0.5;
       setViewSize(viewW / scaleFactor);
       viewX = pt.x - fx * viewW;
       viewY = pt.y - fy * viewH;
+      clampViewToWorld();
       pinchStart.dist = dist;
       applyViewBox();
       return;
@@ -309,6 +343,7 @@
       const d = screenDeltaToWorld(dx, dy);
       viewX = dragStart.viewX - d.dx;
       viewY = dragStart.viewY - d.dy;
+      clampViewToWorld();
       applyViewBox();
     }
   }
